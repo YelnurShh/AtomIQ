@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "887781988537",
+    "project_id": "alhimic-a152b",
+    "storage_bucket": "alhimic-a152b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:887781988537:android:400ca948473a07f3dca368",
+        "android_client_info": {
+          "package_name": "kz.edu.chembalance.chem_balance_ai"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "887781988537-vc7bbd6tbpilirmo3i6sg2jomjk7jgnn.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "kz.edu.chembalance.chem_balance_ai",
+            "certificate_hash": "0951274abc7b3a193008d0bb02c52f85663da53e"
+          }
+        },
+        {
+          "client_id": "887781988537-rot5o7ft9as68k5le4ki2elkq6caujp9.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBfn_NRujsJ8bvEStrdPpU2IcLvwGqT7d0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "887781988537-rot5o7ft9as68k5le4ki2elkq6caujp9.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "887781988537-scrpsepj4dtjgflitrn5llm9q52gsvdb.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.khanmedia.kz"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,25 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "alhimic-a152b",
+          "appId": "1:887781988537:android:400ca948473a07f3dca368",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "alhimic-a152b",
+          "configurations": {
+            "android": "1:887781988537:android:400ca948473a07f3dca368",
+            "ios": "1:887781988537:ios:36643a44b80abe5fdca368"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}

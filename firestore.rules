@@ -1,0 +1,89 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isTeacher() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+    }
+    match /users/{userId} {
+      function owner() { return request.auth != null && request.auth.uid == userId; }
+      allow read: if owner();
+      allow create: if owner()
+        && request.resource.data.name is string
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role in ['student', 'teacher'];
+      allow update: if owner()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'school'])
+        && request.resource.data.name is string && request.resource.data.school is string;
+      match /checks/{checkId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      match /practice/{taskId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      match /lessons/{lessonId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      match /memberships/{classId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+    match /classes/{classId} {
+      function owner() {
+        return signedIn() && resource.data.ownerId == request.auth.uid;
+      }
+      function classOwner() {
+        return signedIn()
+          && get(/databases/$(database)/documents/classes/$(classId)).data.ownerId == request.auth.uid;
+      }
+      function member() {
+        return signedIn()
+          && exists(/databases/$(database)/documents/classes/$(classId)/members/$(request.auth.uid));
+      }
+      allow read: if signedIn();
+      allow create: if isTeacher()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.name is string
+        && request.resource.data.code is string;
+      allow update, delete: if owner();
+
+      match /members/{memberId} {
+        allow read: if classOwner() || member();
+        allow create: if signedIn() && request.auth.uid == memberId
+          && request.resource.data.userId == request.auth.uid;
+        allow update, delete: if classOwner() || (signedIn() && request.auth.uid == memberId);
+      }
+      match /posts/{postId} {
+        allow read: if classOwner() || member();
+        allow create: if classOwner()
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.title is string
+          && request.resource.data.body is string;
+        allow update, delete: if classOwner();
+        match /comments/{commentId} {
+          allow read: if classOwner() || member();
+          allow create: if (classOwner() || member())
+            && request.resource.data.authorId == request.auth.uid
+            && request.resource.data.body is string;
+          allow update, delete: if classOwner()
+            || (signedIn() && resource.data.authorId == request.auth.uid);
+        }
+      }
+      match /assignments/{assignmentId} {
+        allow read: if classOwner() || member();
+        allow create, update, delete: if classOwner();
+        match /submissions/{studentId} {
+          allow read: if classOwner() || (signedIn() && request.auth.uid == studentId);
+          allow create: if member() && request.auth.uid == studentId
+            && request.resource.data.studentId == request.auth.uid
+            && request.resource.data.status == 'submitted'
+            && request.resource.data.feedback == ''
+            && request.resource.data.score == null;
+          allow update: if classOwner();
+          allow delete: if classOwner() || (signedIn() && request.auth.uid == studentId);
+        }
+      }
+    }
+  }
+}
