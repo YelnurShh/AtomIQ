@@ -7,9 +7,13 @@ import '../services/equation_checker.dart';
 import '../widgets/ui.dart';
 import '../widgets/ai_answer.dart';
 
+typedef AiResponder =
+    Future<String> Function(String prompt, List<Map<String, String>> history);
+
 class AiScreen extends StatefulWidget {
-  const AiScreen({super.key, required this.onSaved});
+  const AiScreen({super.key, required this.onSaved, this.responder});
   final VoidCallback onSaved;
+  final AiResponder? responder;
   @override
   State<AiScreen> createState() => AiScreenState();
 }
@@ -72,7 +76,9 @@ class AiScreenState extends State<AiScreen> {
     });
     jump();
     try {
-      final answer = await GroqService().ask(text, history: prior);
+      final answer = widget.responder == null
+          ? await GroqService().ask(text, history: prior)
+          : await widget.responder!(text, prior);
       if (!mounted || session != chatSession) return;
       final message = _Message(
         user: false,

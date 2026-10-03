@@ -61,7 +61,7 @@ dev_dependencies:
   firebase_auth_mocks: ^0.15.2
 
 flutter_launcher_icons:
-  android: "launcher_icon"
+  android: "ic_launcher"
   ios: false
   image_path: "assets/images/app_icon.png"
   adaptive_icon_background: "#EAF9FF"

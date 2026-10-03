@@ -169,6 +169,9 @@ void main() {
     await tester.pump();
     expect(find.text('Сынып'), findsWidgets);
     expect(find.text('Тапсырмалар'), findsNothing);
+    await tester.pumpAndSettle();
+    expect(find.text('Тексеруді күтуде'), findsOneWidget);
+    expect(find.text('Өтілген сабақ'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

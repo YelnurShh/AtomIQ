@@ -26,6 +26,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   late Future<ProfileOverview> overview;
+  bool deleting = false;
 
   @override
   void initState() {
@@ -83,6 +84,101 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SnackBar(content: Text('Шығу орындалмады. Қайта көріңіз.')),
         );
       }
+    }
+  }
+
+  Future<void> _deleteAccount() async {
+    if (deleting) return;
+    final google = AppServices.instance.usesGoogleSignIn;
+    var password = '';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        scrollable: true,
+        title: const Text('Аккаунтты өшіру'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Бұл әрекет қайтарылмайды. Профиль, нәтижелер, пікірлер мен жауаптар өшеді. Мұғалім болсаңыз, сыныптарыңыз, посттар мен тапсырмалар да өшеді.',
+            ),
+            if (!google) ...[
+              const SizedBox(height: 16),
+              TextField(
+                obscureText: true,
+                onChanged: (value) => password = value,
+                decoration: const InputDecoration(labelText: 'Құпиясөз'),
+              ),
+            ] else ...[
+              const SizedBox(height: 12),
+              const Text(
+                'Жалғастыру үшін Google аккаунтыңызды қайта растаңыз.',
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Бас тарту'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Біржола өшіру'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => deleting = true);
+    final progress = OverlayEntry(
+      builder: (context) => Stack(
+        children: [
+          const ModalBarrier(dismissible: false, color: Color(0x730E1B33)),
+          Center(
+            child: AlertDialog(
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Аккаунт өшірілуде...',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Деректерді тазалау біраз уақыт алуы мүмкін.',
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    Overlay.of(context, rootOverlay: true).insert(progress);
+    Object? failure;
+    try {
+      await AppServices.instance.deleteAccount(password: password);
+    } catch (error) {
+      failure = error;
+    } finally {
+      progress.remove();
+      progress.dispose();
+      if (mounted) setState(() => deleting = false);
+    }
+    if (!mounted) return;
+    if (failure == null) {
+      widget.onSignedOut();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(failure.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
     }
   }
 
@@ -160,12 +256,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               Expanded(
                                 child: _StatTile(
                                   icon: data.isTeacher
-                                      ? Icons.menu_book_outlined
+                                      ? Icons.school_outlined
                                       : Icons.science_outlined,
                                   value: data.isTeacher
-                                      ? '${data.theoryCompleted}'
+                                      ? '${data.studentsCount}'
                                       : '${data.practiceCompleted}',
-                                  label: data.isTeacher ? 'Сабақ' : 'Практика',
+                                  label: data.isTeacher ? 'Оқушы' : 'Практика',
                                   color: AppColors.mint,
                                 ),
                               ),
@@ -173,19 +269,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               Expanded(
                                 child: _StatTile(
                                   icon: data.isTeacher
-                                      ? Icons.fact_check_outlined
+                                      ? Icons.pending_actions_outlined
                                       : Icons.groups_2_outlined,
                                   value: data.isTeacher
-                                      ? '${data.checksCount}'
+                                      ? '${data.pendingSubmissionsCount}'
                                       : '${data.classesCount}',
-                                  label: data.isTeacher ? 'Тексеру' : 'Сынып',
+                                  label: data.isTeacher ? 'Күтуде' : 'Сынып',
                                   color: AppColors.violet,
                                 ),
                               ),
                             ],
                           ),
                           const SizedBox(height: 24),
-                          _LearningProgress(overview: data),
+                          data.isTeacher
+                              ? _TeacherActivity(overview: data)
+                              : _LearningProgress(overview: data),
                           const SizedBox(height: 24),
                           Text(
                             'Аккаунт',
@@ -221,6 +319,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           title: 'Аккаунттан шығу',
                           subtitle: 'Нәтижелеріңіз сақталады',
                           onTap: _logout,
+                          destructive: true,
+                        ),
+                        const SizedBox(height: 10),
+                        _ActionRow(
+                          icon: Icons.delete_forever_outlined,
+                          title: 'Аккаунтты өшіру',
+                          subtitle: deleting
+                              ? 'Деректер өшірілуде...'
+                              : 'Профиль мен барлық деректі біржола өшіру',
+                          onTap: _deleteAccount,
                           destructive: true,
                         ),
                         const SizedBox(height: 24),
@@ -445,6 +553,49 @@ class _StatTile extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontSize: 10, color: AppColors.muted),
+        ),
+      ],
+    ),
+  );
+}
+
+class _TeacherActivity extends StatelessWidget {
+  const _TeacherActivity({required this.overview});
+  final ProfileOverview overview;
+
+  @override
+  Widget build(BuildContext context) => SoftCard(
+    padding: const EdgeInsets.all(18),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Жарияланған материалдар',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            const Icon(Icons.article_outlined, color: AppColors.blue),
+            const SizedBox(width: 10),
+            const Expanded(child: Text('Посттар')),
+            Text(
+              '${overview.postsCount}',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+        const Divider(height: 24),
+        Row(
+          children: [
+            const Icon(Icons.assignment_outlined, color: AppColors.mint),
+            const SizedBox(width: 10),
+            const Expanded(child: Text('Үй тапсырмалары')),
+            Text(
+              '${overview.assignmentsCount}',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ],
         ),
       ],
     ),

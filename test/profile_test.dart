@@ -82,6 +82,18 @@ void main() {
       'ownerId': 'profile-teacher',
       'name': '7A',
     });
+    final owned = store.collection('classes').doc('owned');
+    await owned.collection('members').doc('student-1').set({
+      'userId': 'student-1',
+    });
+    await owned.collection('posts').doc('post-1').set({
+      'authorId': 'profile-teacher',
+    });
+    final assignment = owned.collection('assignments').doc('assignment-1');
+    await assignment.set({'title': 'Теңестіру'});
+    await assignment.collection('submissions').doc('student-1').set({
+      'status': 'submitted',
+    });
     await store.collection('classes').doc('other').set({
       'ownerId': 'another-teacher',
       'name': '8A',
@@ -90,6 +102,121 @@ void main() {
     final overview = await app.loadProfileOverview();
     expect(overview.isTeacher, isTrue);
     expect(overview.classesCount, 1);
+    expect(overview.studentsCount, 1);
+    expect(overview.postsCount, 1);
+    expect(overview.assignmentsCount, 1);
+    expect(overview.pendingSubmissionsCount, 1);
     expect(overview.name, 'Айгерім');
+  });
+
+  test('deleting a student removes their class activity and profile', () async {
+    SharedPreferences.setMockInitialValues({});
+    final store = FakeFirebaseFirestore();
+    final auth = MockFirebaseAuth(
+      mockUser: MockUser(uid: 'student-delete', email: 'student@school.kz'),
+    );
+    final app = AppServices.forTesting(auth: auth, firestore: store)
+      ..firebaseReady = true
+      ..prefs = await SharedPreferences.getInstance();
+    await app.register('Оқушы', 'student@school.kz', 'password123');
+    final classroom = store.collection('classes').doc('class-1');
+    await classroom.set({'ownerId': 'teacher-1', 'name': '7А'});
+    await classroom.collection('members').doc(app.userId).set({
+      'userId': app.userId,
+    });
+    await store
+        .collection('users')
+        .doc(app.userId)
+        .collection('memberships')
+        .doc('class-1')
+        .set({'classId': 'class-1'});
+    final post = classroom.collection('posts').doc('post-1');
+    await post.set({'authorId': 'teacher-1'});
+    await post.collection('comments').doc('comment-1').set({
+      'authorId': app.userId,
+    });
+    final assignment = classroom.collection('assignments').doc('assignment-1');
+    await assignment.set({'title': 'Су'});
+    await assignment.collection('submissions').doc(app.userId).set({
+      'studentId': app.userId,
+    });
+    await store
+        .collection('users')
+        .doc(app.userId)
+        .collection('lessons')
+        .doc('lesson-1')
+        .set({'mistakes': 0});
+    final uid = app.userId;
+
+    await app.deleteAccount();
+
+    expect((await store.collection('users').doc(uid).get()).exists, isFalse);
+    expect(
+      (await store.collection('users').doc(uid).collection('lessons').get())
+          .docs,
+      isEmpty,
+    );
+    expect(
+      (await classroom.collection('members').doc(uid).get()).exists,
+      isFalse,
+    );
+    expect((await post.collection('comments').get()).docs, isEmpty);
+    expect((await assignment.collection('submissions').get()).docs, isEmpty);
+  });
+
+  test('deleting a teacher removes classes and nested content', () async {
+    SharedPreferences.setMockInitialValues({});
+    final store = FakeFirebaseFirestore();
+    final auth = MockFirebaseAuth(
+      mockUser: MockUser(uid: 'teacher-delete', email: 'teacher@school.kz'),
+    );
+    final app = AppServices.forTesting(auth: auth, firestore: store)
+      ..firebaseReady = true
+      ..prefs = await SharedPreferences.getInstance();
+    await app.register(
+      'Мұғалім',
+      'teacher@school.kz',
+      'password123',
+      role: AccountRole.teacher,
+      teacherCode: AppServices.teacherRegistrationCode,
+    );
+    final uid = app.userId;
+    final classroom = store.collection('classes').doc('class-1');
+    await classroom.set({'ownerId': uid, 'name': '7А'});
+    await classroom.collection('members').doc('student-1').set({
+      'userId': 'student-1',
+    });
+    await store
+        .collection('users')
+        .doc('student-1')
+        .collection('memberships')
+        .doc('class-1')
+        .set({'classId': 'class-1'});
+    final post = classroom.collection('posts').doc('post-1');
+    await post.set({'authorId': uid});
+    await post.collection('comments').doc('comment-1').set({
+      'authorId': 'student-1',
+    });
+    final assignment = classroom.collection('assignments').doc('assignment-1');
+    await assignment.set({'title': 'Су'});
+    await assignment.collection('submissions').doc('student-1').set({
+      'studentId': 'student-1',
+    });
+
+    await app.deleteAccount();
+
+    expect((await store.collection('users').doc(uid).get()).exists, isFalse);
+    expect((await classroom.get()).exists, isFalse);
+    expect((await post.collection('comments').get()).docs, isEmpty);
+    expect((await assignment.collection('submissions').get()).docs, isEmpty);
+    expect(
+      (await store
+              .collection('users')
+              .doc('student-1')
+              .collection('memberships')
+              .get())
+          .docs,
+      isEmpty,
+    );
   });
 }

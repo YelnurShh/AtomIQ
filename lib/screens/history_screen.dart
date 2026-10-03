@@ -33,7 +33,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Future<void> reload() async {
     final next = AppServices.instance.loadHistory();
-    setState(() => future = next);
+    setState(() {
+      future = next;
+    });
     await next;
   }
 

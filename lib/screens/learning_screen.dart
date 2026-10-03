@@ -22,9 +22,7 @@ class RoleDashboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = AppServices.instance;
-    final classes = app.isTeacher
-        ? app.loadTeacherClasses()
-        : app.loadStudentClasses();
+    final classes = app.isTeacher ? null : app.loadStudentClasses();
     return RefreshIndicator(
       onRefresh: () async => (context as Element).markNeedsBuild(),
       child: ListView(
@@ -106,39 +104,106 @@ class RoleDashboard extends StatelessWidget {
                 if (app.isTeacher) const SizedBox(height: 16),
                 const ElementHomePreview(),
                 const SizedBox(height: 22),
-                FutureBuilder<List<Classroom>>(
-                  future: classes,
-                  builder: (context, snap) {
-                    final count = snap.data?.length;
-                    return Row(
-                      children: [
-                        Expanded(
-                          child: _StatCard(
-                            icon: Icons.groups_2_outlined,
-                            value: count == null ? '—' : '$count',
-                            label: app.isTeacher ? 'Сынып' : 'Қосылған сынып',
-                            color: AppColors.violet,
+                if (app.isTeacher)
+                  FutureBuilder<ProfileOverview>(
+                    future: app.loadProfileOverview(),
+                    builder: (context, snap) {
+                      final data = snap.data;
+                      return Column(
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _StatCard(
+                                  icon: Icons.groups_2_outlined,
+                                  value: data == null
+                                      ? '—'
+                                      : '${data.classesCount}',
+                                  label: 'Сынып',
+                                  color: AppColors.violet,
+                                  onTap: onOpenLearning,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _StatCard(
+                                  icon: Icons.school_outlined,
+                                  value: data == null
+                                      ? '—'
+                                      : '${data.studentsCount}',
+                                  label: 'Оқушы',
+                                  color: AppColors.mint,
+                                  onTap: onOpenLearning,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: FutureBuilder<Set<String>>(
-                            future: app.loadLessonProgress(),
-                            builder: (context, progress) => _StatCard(
-                              icon: Icons.menu_book_outlined,
-                              value: progress.hasData
-                                  ? '${CurriculumCatalog.theory.where((lesson) => progress.data!.contains(lesson.id)).length}/${CurriculumCatalog.theory.length}'
-                                  : '—',
-                              label: 'Өтілген сабақ',
-                              color: AppColors.mint,
-                              onTap: onOpenLessons,
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _StatCard(
+                                  icon: Icons.assignment_outlined,
+                                  value: data == null
+                                      ? '—'
+                                      : '${data.assignmentsCount}',
+                                  label: 'Берілген тапсырма',
+                                  color: AppColors.blue,
+                                  onTap: onOpenLearning,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _StatCard(
+                                  icon: Icons.pending_actions_outlined,
+                                  value: data == null
+                                      ? '—'
+                                      : '${data.pendingSubmissionsCount}',
+                                  label: 'Тексеруді күтуде',
+                                  color: AppColors.coral,
+                                  onTap: onOpenLearning,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      );
+                    },
+                  )
+                else
+                  FutureBuilder<List<Classroom>>(
+                    future: classes,
+                    builder: (context, snap) {
+                      final count = snap.data?.length;
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: _StatCard(
+                              icon: Icons.groups_2_outlined,
+                              value: count == null ? '—' : '$count',
+                              label: 'Қосылған сынып',
+                              color: AppColors.violet,
                             ),
                           ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FutureBuilder<Set<String>>(
+                              future: app.loadLessonProgress(),
+                              builder: (context, progress) => _StatCard(
+                                icon: Icons.menu_book_outlined,
+                                value: progress.hasData
+                                    ? '${CurriculumCatalog.theory.where((lesson) => progress.data!.contains(lesson.id)).length}/${CurriculumCatalog.theory.length}'
+                                    : '—',
+                                label: 'Өтілген сабақ',
+                                color: AppColors.mint,
+                                onTap: onOpenLessons,
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
                 const SizedBox(height: 24),
                 Text(
                   app.isTeacher ? 'Жылдам әрекеттер' : 'Оқуды жалғастыру',
@@ -519,6 +584,8 @@ class _ClassroomDetailScreenState extends State<ClassroomDetailScreen>
   late Future<List<ClassPost>> postsFuture;
   late Future<List<LearningAssignment>> assignmentsFuture;
   late Future<List<ClassMember>> membersFuture;
+  bool publishing = false;
+  String publishingLabel = '';
 
   @override
   void initState() {
@@ -533,7 +600,9 @@ class _ClassroomDetailScreenState extends State<ClassroomDetailScreen>
 
   Future<void> _refreshPosts() async {
     final next = AppServices.instance.loadClassPosts(widget.classroom.id);
-    setState(() => postsFuture = next);
+    setState(() {
+      postsFuture = next;
+    });
     try {
       await next;
     } catch (_) {
@@ -543,7 +612,9 @@ class _ClassroomDetailScreenState extends State<ClassroomDetailScreen>
 
   Future<void> _refreshAssignments() async {
     final next = AppServices.instance.loadAssignments(widget.classroom.id);
-    setState(() => assignmentsFuture = next);
+    setState(() {
+      assignmentsFuture = next;
+    });
     try {
       await next;
     } catch (_) {
@@ -553,7 +624,9 @@ class _ClassroomDetailScreenState extends State<ClassroomDetailScreen>
 
   Future<void> _refreshMembers() async {
     final next = AppServices.instance.loadClassMembers(widget.classroom.id);
-    setState(() => membersFuture = next);
+    setState(() {
+      membersFuture = next;
+    });
     try {
       await next;
     } catch (_) {
@@ -636,7 +709,11 @@ class _ClassroomDetailScreenState extends State<ClassroomDetailScreen>
         ),
       ),
     );
-    if (post == null || !mounted) return;
+    if (post == null || !mounted || publishing) return;
+    setState(() {
+      publishing = true;
+      publishingLabel = 'Пост жариялануда...';
+    });
     try {
       await AppServices.instance.createClassPost(
         widget.classroom.id,
@@ -646,6 +723,8 @@ class _ClassroomDetailScreenState extends State<ClassroomDetailScreen>
       if (mounted) await _refreshPosts();
     } catch (error) {
       if (mounted) _error(context, error);
+    } finally {
+      if (mounted) setState(() => publishing = false);
     }
   }
 
@@ -699,7 +778,11 @@ class _ClassroomDetailScreenState extends State<ClassroomDetailScreen>
         ),
       ),
     );
-    if (ok == true) {
+    if (ok == true && mounted && !publishing) {
+      setState(() {
+        publishing = true;
+        publishingLabel = 'Тапсырма жариялануда...';
+      });
       try {
         await AppServices.instance.createAssignment(
           widget.classroom.id,
@@ -711,6 +794,8 @@ class _ClassroomDetailScreenState extends State<ClassroomDetailScreen>
         if (mounted) await _refreshAssignments();
       } catch (e) {
         if (mounted) _error(context, e);
+      } finally {
+        if (mounted) setState(() => publishing = false);
       }
     }
   }
@@ -770,17 +855,52 @@ class _ClassroomDetailScreenState extends State<ClassroomDetailScreen>
         ? SizedBox(
             width: context.isCompact ? 165 : 190,
             child: PrimaryButton(
-              onTap: tabs.index == 0 ? _createPost : _createAssignment,
-              label: tabs.index == 0 ? 'Пост жазу' : 'Тапсырма қосу',
+              onTap: publishing
+                  ? null
+                  : tabs.index == 0
+                  ? _createPost
+                  : _createAssignment,
+              loading: publishing,
+              label: publishing
+                  ? publishingLabel
+                  : tabs.index == 0
+                  ? 'Пост жазу'
+                  : 'Тапсырма қосу',
               icon: tabs.index == 0
                   ? Icons.edit_outlined
                   : Icons.add_task_rounded,
             ),
           )
         : null,
-    body: TabBarView(
-      controller: tabs,
-      children: [_postsTab(), _assignmentsTab(), _membersTab()],
+    body: Stack(
+      children: [
+        TabBarView(
+          controller: tabs,
+          children: [_postsTab(), _assignmentsTab(), _membersTab()],
+        ),
+        if (publishing) ...[
+          const ModalBarrier(dismissible: false, color: Color(0x99FFFFFF)),
+          Center(
+            child: Card(
+              elevation: 8,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 28,
+                  vertical: 24,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 16),
+                    Text(publishingLabel),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
     ),
   );
 
@@ -1178,7 +1298,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
   Future<void> _refreshComments() async {
     final next = AppServices.instance.loadPostComments(widget.post);
-    setState(() => commentsFuture = next);
+    setState(() {
+      commentsFuture = next;
+    });
     try {
       await next;
     } catch (_) {

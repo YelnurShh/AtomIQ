@@ -24,6 +24,10 @@ class ProfileOverview {
     required this.practiceCompleted,
     required this.formulasCompleted,
     required this.classesCount,
+    this.studentsCount = 0,
+    this.postsCount = 0,
+    this.assignmentsCount = 0,
+    this.pendingSubmissionsCount = 0,
   });
 
   final String name;
@@ -35,6 +39,10 @@ class ProfileOverview {
   final int practiceCompleted;
   final int formulasCompleted;
   final int classesCount;
+  final int studentsCount;
+  final int postsCount;
+  final int assignmentsCount;
+  final int pendingSubmissionsCount;
   bool get isTeacher => role == AccountRole.teacher;
   String get roleLabel => isTeacher ? 'Мұғалім' : 'Оқушы';
 }
@@ -374,16 +382,60 @@ class AppServices {
       final data = profile.data()!;
       _applyProfile(data);
       const server = GetOptions(source: Source.server);
+      if (isTeacher) {
+        final classes = await _firestore
+            .collection('classes')
+            .where('ownerId', isEqualTo: uid)
+            .get(server);
+        final students = <String>{};
+        var posts = 0;
+        var assignments = 0;
+        var pending = 0;
+        for (final classroom in classes.docs) {
+          final members = await classroom.reference
+              .collection('members')
+              .get(server);
+          final classPosts = await classroom.reference
+              .collection('posts')
+              .get(server);
+          final classAssignments = await classroom.reference
+              .collection('assignments')
+              .get(server);
+          students.addAll(members.docs.map((member) => member.id));
+          posts += classPosts.docs.length;
+          assignments += classAssignments.docs.length;
+          for (final assignment in classAssignments.docs) {
+            final submissions = await assignment.reference
+                .collection('submissions')
+                .get(server);
+            pending += submissions.docs
+                .where(
+                  (submission) => submission.data()['status'] == 'submitted',
+                )
+                .length;
+          }
+        }
+        return ProfileOverview(
+          name: displayName,
+          email: email,
+          school: school,
+          role: role,
+          checksCount: 0,
+          theoryCompleted: 0,
+          practiceCompleted: 0,
+          formulasCompleted: 0,
+          classesCount: classes.docs.length,
+          studentsCount: students.length,
+          postsCount: posts,
+          assignmentsCount: assignments,
+          pendingSubmissionsCount: pending,
+        );
+      }
       final snapshots = await Future.wait<QuerySnapshot<Map<String, dynamic>>>([
         userRef.collection('checks').get(server),
         userRef.collection('lessons').get(server),
         userRef.collection('practice').get(server),
-        isTeacher
-            ? _firestore
-                  .collection('classes')
-                  .where('ownerId', isEqualTo: uid)
-                  .get(server)
-            : userRef.collection('memberships').get(server),
+        userRef.collection('memberships').get(server),
       ]);
       final checks = snapshots[0];
       final lessons = snapshots[1];
@@ -456,6 +508,140 @@ class AppServices {
     _email = '';
     _school = '';
     role = AccountRole.student;
+  }
+
+  bool get usesGoogleSignIn =>
+      firebaseReady &&
+      (_auth.currentUser?.providerData.any(
+            (provider) => provider.providerId == 'google.com',
+          ) ??
+          false);
+
+  Future<void> deleteAccount({String? password}) async {
+    _requireBackend();
+    if (!firebaseReady) {
+      if (!allowLocalDemo || !isSignedIn) {
+        throw Exception('Алдымен аккаунтқа кіріңіз.');
+      }
+      final email = _email.toLowerCase();
+      await prefs.remove('account_$email');
+      await prefs.remove('history_$email');
+      await prefs.remove(_lessonsKey);
+      await prefs.remove(_practiceKey);
+      await signOut();
+      return;
+    }
+    final user = _auth.currentUser;
+    if (user == null) throw Exception('Алдымен аккаунтқа кіріңіз.');
+    final uid = user.uid;
+    final email = _email.toLowerCase();
+
+    // Firebase Auth may require a recent login. Do this before removing data.
+    if (_authOverride == null) {
+      if (usesGoogleSignIn) {
+        _googleInitialization ??= GoogleSignIn.instance.initialize();
+        await _googleInitialization;
+        final account = await GoogleSignIn.instance.authenticate();
+        final token = account.authentication.idToken;
+        if (token == null) {
+          throw Exception('Google аккаунтын растау мүмкін болмады.');
+        }
+        await user.reauthenticateWithCredential(
+          GoogleAuthProvider.credential(idToken: token),
+        );
+      } else {
+        if (password == null || password.isEmpty || user.email == null) {
+          throw Exception('Аккаунтты өшіру үшін құпиясөзді енгізіңіз.');
+        }
+        await user.reauthenticateWithCredential(
+          EmailAuthProvider.credential(email: user.email!, password: password),
+        );
+      }
+    }
+
+    final userRef = _firestore.collection('users').doc(uid);
+    if (isTeacher) {
+      final classes = await _firestore
+          .collection('classes')
+          .where('ownerId', isEqualTo: uid)
+          .get();
+      for (final classroom in classes.docs) {
+        final posts = await classroom.reference.collection('posts').get();
+        for (final post in posts.docs) {
+          await _deleteCollection(post.reference.collection('comments'));
+          await post.reference.delete();
+        }
+        final assignments = await classroom.reference
+            .collection('assignments')
+            .get();
+        for (final assignment in assignments.docs) {
+          await _deleteCollection(
+            assignment.reference.collection('submissions'),
+          );
+          await assignment.reference.delete();
+        }
+        final members = await classroom.reference.collection('members').get();
+        for (final member in members.docs) {
+          await _firestore
+              .collection('users')
+              .doc(member.id)
+              .collection('memberships')
+              .doc(classroom.id)
+              .delete();
+          await member.reference.delete();
+        }
+        await classroom.reference.delete();
+      }
+    } else {
+      final memberships = await userRef.collection('memberships').get();
+      for (final membership in memberships.docs) {
+        final classroom = _firestore.collection('classes').doc(membership.id);
+        final classDoc = await classroom.get();
+        if (classDoc.exists) {
+          final posts = await classroom.collection('posts').get();
+          for (final post in posts.docs) {
+            final comments = await post.reference
+                .collection('comments')
+                .where('authorId', isEqualTo: uid)
+                .get();
+            for (final comment in comments.docs) {
+              await comment.reference.delete();
+            }
+          }
+          final assignments = await classroom.collection('assignments').get();
+          for (final assignment in assignments.docs) {
+            await assignment.reference
+                .collection('submissions')
+                .doc(uid)
+                .delete();
+          }
+          await classroom.collection('members').doc(uid).delete();
+        }
+        await membership.reference.delete();
+      }
+    }
+    for (final collection in ['checks', 'lessons', 'practice', 'memberships']) {
+      await _deleteCollection(userRef.collection(collection));
+    }
+    await userRef.delete();
+    await user.delete();
+    await prefs.remove('history_$uid');
+    await prefs.remove('lessons_$uid');
+    await prefs.remove('practice_$uid');
+    await prefs.remove('account_$email');
+    await signOut();
+  }
+
+  Future<void> _deleteCollection(
+    CollectionReference<Map<String, dynamic>> collection,
+  ) async {
+    while (true) {
+      final page = await collection.limit(200).get();
+      if (page.docs.isEmpty) return;
+      for (final doc in page.docs) {
+        await doc.reference.delete();
+      }
+    }
   }
 
   Future<List<CheckResult>> loadHistory() async {

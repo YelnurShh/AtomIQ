@@ -16,6 +16,7 @@ service cloud.firestore {
       allow update: if owner()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'school'])
         && request.resource.data.name is string && request.resource.data.school is string;
+      allow delete: if owner();
       match /checks/{checkId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
@@ -26,7 +27,9 @@ service cloud.firestore {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
       match /memberships/{classId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read, create, update: if request.auth != null && request.auth.uid == userId;
+        allow delete: if (request.auth != null && request.auth.uid == userId)
+          || (signedIn() && get(/databases/$(database)/documents/classes/$(classId)).data.ownerId == request.auth.uid);
       }
     }
     match /classes/{classId} {
